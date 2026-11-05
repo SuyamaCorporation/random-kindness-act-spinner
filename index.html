@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ランダム親切行動スピナー</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  *:focus-visible { outline: 2px solid #ec4899; outline-offset: 2px; }
+  #wheel-canvas { display: block; margin: 0 auto; cursor: pointer; }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+  .fade-up { animation: fadeUp 0.4s ease; }
+  @keyframes confettiDrop { 0%{transform:translateY(-10px) rotate(0deg);opacity:1} 100%{transform:translateY(80px) rotate(360deg);opacity:0} }
+  .confetti-piece { position:absolute; width:8px; height:8px; border-radius:2px; animation: confettiDrop 1s ease forwards; pointer-events:none; }
+  #confetti-container { position:fixed; top:0; left:0; width:100%; height:100%; pointer-events:none; overflow:hidden; z-index:999; }
+  .streak-flame { animation: flicker 0.8s infinite alternate; }
+  @keyframes flicker { from{transform:scaleY(1)} to{transform:scaleY(1.1)} }
+</style>
+</head>
+<body class="bg-gradient-to-br from-pink-50 via-rose-50 to-orange-50 min-h-screen p-4">
+
+<div id="confetti-container"></div>
+
+<div class="max-w-lg mx-auto">
+  <header class="text-center py-5">
+    <h1 class="text-3xl font-bold text-rose-700">💝 ランダム親切行動スピナー</h1>
+    <p class="text-rose-400 mt-1">今日できる小さな親切を提案します</p>
+  </header>
+
+  <!-- Stats -->
+  <div class="bg-white rounded-2xl shadow p-4 mb-4 flex gap-4 text-center">
+    <div class="flex-1">
+      <p class="text-xs text-gray-400">今週の達成</p>
+      <p id="stat-week" class="text-2xl font-bold text-rose-600">0</p>
+    </div>
+    <div class="flex-1">
+      <p class="text-xs text-gray-400">連続日数</p>
+      <p class="text-2xl font-bold text-orange-500"><span id="stat-streak">0</span> <span class="streak-flame text-lg">🔥</span></p>
+    </div>
+    <div class="flex-1">
+      <p class="text-xs text-gray-400">総達成</p>
+      <p id="stat-total" class="text-2xl font-bold text-green-600">0</p>
+    </div>
+  </div>
+
+  <!-- Category Filter -->
+  <div class="bg-white rounded-2xl shadow p-3 mb-4">
+    <p class="text-xs font-semibold text-gray-400 mb-2">カテゴリ絞り込み</p>
+    <div class="flex flex-wrap gap-2" role="group" aria-label="カテゴリフィルター">
+      <button onclick="toggleCat('all')" id="cat-all" class="cat-btn px-3 py-1.5 bg-rose-500 text-white rounded-full text-xs font-semibold transition">すべて</button>
+      <button onclick="toggleCat('family')" id="cat-family" class="cat-btn px-3 py-1.5 bg-gray-100 text-gray-600 rounded-full text-xs font-semibold hover:bg-rose-100 transition">👨‍👩‍👧 家族</button>
+      <button onclick="toggleCat('friend')" id="cat-friend" class="cat-btn px-3 py-1.5 bg-gray-100 text-gray-600 rounded-full text-xs font-semibold hover:bg-rose-100 transition">👫 友人</button>
+      <button onclick="toggleCat('work')" id="cat-work" class="cat-btn px-3 py-1.5 bg-gray-100 text-gray-600 rounded-full text-xs font-semibold hover:bg-rose-100 transition">💼 仕事</button>
+      <button onclick="toggleCat('stranger')" id="cat-stranger" class="cat-btn px-3 py-1.5 bg-gray-100 text-gray-600 rounded-full text-xs font-semibold hover:bg-rose-100 transition">🌍 知らない人</button>
+      <button onclick="toggleCat('sns')" id="cat-sns" class="cat-btn px-3 py-1.5 bg-gray-100 text-gray-600 rounded-full text-xs font-semibold hover:bg-rose-100 transition">📱 SNS</button>
+      <button onclick="toggleCat('self')" id="cat-self" class="cat-btn px-3 py-1.5 bg-gray-100 text-gray-600 rounded-full text-xs font-semibold hover:bg-rose-100 transition">🧘 自分自身</button>
+    </div>
+  </div>
+
+  <!-- Wheel -->
+  <div class="bg-white rounded-2xl shadow p-6 mb-4 text-center">
+    <div class="relative inline-block mb-3">
+      <canvas id="wheel-canvas" width="280" height="280" role="img" aria-label="スピナーホイール"></canvas>
+      <!-- Pointer -->
+      <div class="absolute top-1/2 right-0 transform translate-x-1 -translate-y-1/2 text-2xl">▶</div>
+    </div>
+    <br>
+    <button onclick="spin()" id="spin-btn" class="bg-rose-500 hover:bg-rose-600 text-white font-bold px-10 py-3 rounded-full text-lg transition shadow-lg" aria-label="スピンする">
+      🎲 スピン！
+    </button>
+  </div>
+
+  <!-- Result Card -->
+  <div id="result-card" class="hidden bg-white rounded-2xl shadow-lg p-6 mb-4 fade-up">
+    <div class="flex items-start gap-3 mb-4">
+      <span id="result-cat-icon" class="text-3xl"></span>
+      <div>
+        <p id="result-cat-label" class="text-xs font-bold text-gray-400 mb-1"></p>
+        <p id="result-action" class="text-xl font-bold text-gray-800"></p>
+      </div>
+    </div>
+    <div class="bg-rose-50 rounded-xl p-3 mb-4">
+      <p id="result-desc" class="text-sm text-gray-600 leading-relaxed"></p>
+      <div class="flex gap-4 mt-2 text-xs text-gray-400">
+        <span>⏱ <span id="result-time"></span></span>
+        <span>💪 <span id="result-difficulty"></span></span>
+      </div>
+    </div>
+    <button onclick="completAction()" id="complete-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl transition text-lg">
+      ✅ やった！達成！
+    </button>
+  </div>
+
+  <!-- Today's Log -->
+  <div id="today-log" class="bg-white rounded-2xl shadow p-4 mb-4 hidden">
+    <p class="text-sm font-bold text-gray-700 mb-2">📋 今日の達成</p>
+    <div id="today-list" class="text-sm text-gray-600"></div>
+  </div>
+</div>
+
+<script>
+const KINDNESS = [
+  // 家族 (8)
+  {cat:'family',icon:'👨‍👩‍👧',label:'家族',action:'家族にありがとうと伝える',desc:'普段言えていない感謝の気持ちを口に出してみましょう。LINEでも十分です。',time:'1分',diff:'簡単'},
+  {cat:'family',icon:'👨‍👩‍👧',label:'家族',action:'家族の好きな料理を作る',desc:'いつも作ってもらっている側から、今日は自分が作る番。サプライズで準備しましょう。',time:'30分',diff:'普通'},
+  {cat:'family',icon:'👨‍👩‍👧',label:'家族',action:'親に電話をかける',desc:'最後に親と話したのはいつですか？近況報告も兼ねて電話してみましょう。',time:'10分',diff:'簡単'},
+  {cat:'family',icon:'👨‍👩‍👧',label:'家族',action:'家族の部屋を掃除してあげる',desc:'黙って掃除しておく。気づかれなくてもOK。家族がきれいな部屋で過ごせます。',time:'20分',diff:'普通'},
+  {cat:'family',icon:'👨‍👩‍👧',label:'家族',action:'家族と一緒に写真を撮る',desc:'日常の一コマを写真に残しましょう。後で見返すと宝物になります。',time:'5分',diff:'簡単'},
+  {cat:'family',icon:'👨‍👩‍👧',label:'家族',action:'兄弟・姉妹にメッセージを送る',desc:'久しぶりにメッセージを送って近況を聞いてみましょう。',time:'3分',diff:'簡単'},
+  {cat:'family',icon:'👨‍👩‍👧',label:'家族',action:'家族の好きなお菓子を買ってくる',desc:'帰り道にちょっとした差し入れ。サプライズで喜ばれます。',time:'5分',diff:'簡単'},
+  {cat:'family',icon:'👨‍👩‍👧',label:'家族',action:'家族の話をじっくり聞く',desc:'スマホを置いて、家族の話にしっかり向き合う時間を作りましょう。',time:'15分',diff:'普通'},
+  // 友人 (8)
+  {cat:'friend',icon:'👫',label:'友人',action:'久しぶりの友人にメッセージを送る',desc:'最近会えていない友人に「元気？」と一言送るだけで関係が復活することがあります。',time:'2分',diff:'簡単'},
+  {cat:'friend',icon:'👫',label:'友人',action:'友人の投稿にコメントする',desc:'SNSでいいねだけでなく、心のこもったコメントを添えてみましょう。',time:'3分',diff:'簡単'},
+  {cat:'friend',icon:'👫',label:'友人',action:'友人の誕生日を覚えてお祝いする',desc:'バースデーアプリや手帳で管理して、当日に必ずメッセージを送りましょう。',time:'5分',diff:'簡単'},
+  {cat:'friend',icon:'👫',label:'友人',action:'友人が悩んでいたら相談に乗る',desc:'最近元気なさそうな友人に「話聞くよ」と声をかけてみましょう。',time:'30分',diff:'普通'},
+  {cat:'friend',icon:'👫',label:'友人',action:'友人を食事に誘う',desc:'「いつか行こう」を「今週行こう」に変えてみましょう。',time:'10分',diff:'普通'},
+  {cat:'friend',icon:'👫',label:'友人',action:'友人の頑張りを褒める',desc:'SNSやLINEで友人の最近の努力や成果を具体的に褒めてみましょう。',time:'2分',diff:'簡単'},
+  {cat:'friend',icon:'👫',label:'友人',action:'友人に役立つ情報をシェアする',desc:'友人が興味を持ちそうな記事・動画・お店情報を送ってみましょう。',time:'5分',diff:'簡単'},
+  {cat:'friend',icon:'👫',label:'友人',action:'友人の引越し・作業を手伝う',desc:'困っていることがあれば「手伝うよ」と声をかけましょう。',time:'数時間',diff:'大変'},
+  // 仕事 (8)
+  {cat:'work',icon:'💼',label:'仕事',action:'同僚の仕事を手伝う申し出をする',desc:'「何か手伝えることある？」と声をかけるだけで職場の雰囲気が変わります。',time:'2分',diff:'簡単'},
+  {cat:'work',icon:'💼',label:'仕事',action:'後輩にフィードバックをプレゼントする',desc:'最近頑張っている後輩に具体的で建設的なフィードバックを送りましょう。',time:'10分',diff:'普通'},
+  {cat:'work',icon:'💼',label:'仕事',action:'ミーティングで誰かの意見を拾い上げる',desc:'発言しにくそうな人の意見を「さっきの意見について聞かせてください」と引き出しましょう。',time:'1分',diff:'普通'},
+  {cat:'work',icon:'💼',label:'仕事',action:'コーヒーを買ってくる時に聞く',desc:'コンビニや自販機に行く時に「何か買ってこようか？」と声をかけましょう。',time:'10分',diff:'簡単'},
+  {cat:'work',icon:'💼',label:'仕事',action:'共有スペースを整理整頓する',desc:'誰も頼んでいないのに自分から整理整頓をしてみましょう。',time:'10分',diff:'簡単'},
+  {cat:'work',icon:'💼',label:'仕事',action:'上司・先輩に感謝を伝える',desc:'いつも指導してもらっている先輩に「ありがとうございます」を直接伝えましょう。',time:'1分',diff:'簡単'},
+  {cat:'work',icon:'💼',label:'仕事',action:'誰かの成果をチームに紹介する',desc:'目立ちにくい同僚の頑張りをミーティングや社内チャットでシェアしましょう。',time:'5分',diff:'普通'},
+  {cat:'work',icon:'💼',label:'仕事',action:'困っている人の問題を一緒に解決する',desc:'誰かが詰まっているのを見かけたら声をかけて一緒に考えましょう。',time:'30分',diff:'大変'},
+  // 知らない人 (8)
+  {cat:'stranger',icon:'🌍',label:'知らない人',action:'コンビニ店員に挨拶する',desc:'「ありがとう」に笑顔を添えるだけ。店員さんの一日が少し明るくなります。',time:'1秒',diff:'簡単'},
+  {cat:'stranger',icon:'🌍',label:'知らない人',action:'落とし物を届ける',desc:'落ちているものを見つけたら、無視せず交番や駅の窓口へ届けましょう。',time:'5分',diff:'普通'},
+  {cat:'stranger',icon:'🌍',label:'知らない人',action:'重い荷物の人を手伝う申し出をする',desc:'階段で困っている人がいたら「お手伝いしましょうか？」と声をかけましょう。',time:'5分',diff:'普通'},
+  {cat:'stranger',icon:'🌍',label:'知らない人',action:'道を尋ねられたら丁寧に教える',desc:'スマートフォンで地図を一緒に確認するなど、積極的に手伝いましょう。',time:'3分',diff:'簡単'},
+  {cat:'stranger',icon:'🌍',label:'知らない人',action:'電車で席を譲る',desc:'高齢者・妊婦・子連れの方がいたら積極的に席を譲りましょう。',time:'1秒',diff:'普通'},
+  {cat:'stranger',icon:'🌍',label:'知らない人',action:'お店の口コミを丁寧に書く',desc:'良かったお店にGoogleレビューで具体的なポジティブな口コミを書きましょう。',time:'5分',diff:'簡単'},
+  {cat:'stranger',icon:'🌍',label:'知らない人',action:'寄付をする',desc:'100円でも良い。信頼できる団体への小額寄付から始めましょう。',time:'5分',diff:'普通'},
+  {cat:'stranger',icon:'🌍',label:'知らない人',action:'迷子に声をかける',desc:'困っていそうな子どもや高齢者がいたら「大丈夫ですか？」と声をかけましょう。',time:'5分',diff:'普通'},
+  // SNS (5)
+  {cat:'sns',icon:'📱',label:'SNS',action:'友人の投稿にポジティブコメントをする',desc:'「いいね」だけでなく「素敵だね！」「頑張ってるね！」などの言葉を添えましょう。',time:'2分',diff:'簡単'},
+  {cat:'sns',icon:'📱',label:'SNS',action:'誰かの実績をシェアして応援する',desc:'友人・知人の頑張りをリツイート・シェアして広めましょう。',time:'1分',diff:'簡単'},
+  {cat:'sns',icon:'📱',label:'SNS',action:'有益な情報を整理してシェアする',desc:'自分が学んだことをまとめて投稿。誰かの役に立つかもしれません。',time:'15分',diff:'普通'},
+  {cat:'sns',icon:'📱',label:'SNS',action:'フォロワーに感謝のメッセージを送る',desc:'長く応援してくれているフォロワーにDMで感謝を伝えましょう。',time:'5分',diff:'簡単'},
+  {cat:'sns',icon:'📱',label:'SNS',action:'ネガティブな議論から離れる',desc:'今日は炎上や批判コメントを無視。ポジティブな投稿だけに関わりましょう。',time:'終日',diff:'難しい'},
+  // 自分自身 (5)
+  {cat:'self',icon:'🧘',label:'自分自身',action:'10分間瞑想する',desc:'スマホを遠ざけて静かに10分間。呼吸に集中するだけでOKです。',time:'10分',diff:'普通'},
+  {cat:'self',icon:'🧘',label:'自分自身',action:'今日の3つの良かったことを書く',desc:'感謝日記。今日起きた良いことを3つノートに書きましょう。ポジティブ思考の訓練になります。',time:'5分',diff:'簡単'},
+  {cat:'self',icon:'🧘',label:'自分自身',action:'30分間ウォーキングする',desc:'外の空気を吸いながら歩くと気持ちがリフレッシュされます。',time:'30分',diff:'普通'},
+  {cat:'self',icon:'🧘',label:'自分自身',action:'苦手な人を赦す練習をする',desc:'頭の中で苦手な人に「あなたも幸せでいられますように」と念じてみましょう。',time:'5分',diff:'難しい'},
+  {cat:'self',icon:'🧘',label:'自分自身',action:'デジタルデトックス1時間',desc:'1時間スマホを置いてみましょう。読書・散歩・料理など別のことをしましょう。',time:'1時間',diff:'普通'},
+];
+
+const CAT_COLORS = {
+  family:['#f43f5e','#fb7185'],
+  friend:['#8b5cf6','#a78bfa'],
+  work:['#3b82f6','#60a5fa'],
+  stranger:['#059669','#34d399'],
+  sns:['#f59e0b','#fbbf24'],
+  self:['#ec4899','#f9a8d4'],
+};
+
+let filteredList = [...KINDNESS];
+let currentCat = 'all';
+let spinning = false;
+let currentResult = null;
+let completedToday = JSON.parse(localStorage.getItem('kindness-today') || '[]');
+let allCompleted = JSON.parse(localStorage.getItem('kindness-all') || '[]');
+let streakData = JSON.parse(localStorage.getItem('kindness-streak') || '{"lastDate":"","streak":0}');
+
+// Clean up today's log if date changed
+const today = new Date().toLocaleDateString('ja-JP');
+const storedDate = localStorage.getItem('kindness-date');
+if (storedDate !== today) { completedToday = []; localStorage.setItem('kindness-today', '[]'); localStorage.setItem('kindness-date', today); }
+
+function toggleCat(cat) {
+  currentCat = cat;
+  document.querySelectorAll('.cat-btn').forEach(b => { b.classList.remove('bg-rose-500','text-white'); b.classList.add('bg-gray-100','text-gray-600'); });
+  const btn = document.getElementById('cat-' + cat);
+  if (btn) { btn.classList.remove('bg-gray-100','text-gray-600'); btn.classList.add('bg-rose-500','text-white'); }
+  filteredList = cat === 'all' ? [...KINDNESS] : KINDNESS.filter(k => k.cat === cat);
+  drawWheel();
+}
+
+function drawWheel() {
+  const canvas = document.getElementById('wheel-canvas');
+  const ctx = canvas.getContext('2d');
+  const cx = 140, cy = 140, r = 130;
+  const n = Math.min(filteredList.length, 10);
+  if (n === 0) return;
+  const slice = (2 * Math.PI) / n;
+  ctx.clearRect(0, 0, 280, 280);
+  for (let i = 0; i < n; i++) {
+    const item = filteredList[i % filteredList.length];
+    const colors = CAT_COLORS[item.cat] || ['#f43f5e','#fb7185'];
+    const start = i * slice;
+    const end = start + slice;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, start, end);
+    ctx.closePath();
+    ctx.fillStyle = i % 2 === 0 ? colors[0] : colors[1];
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Icon
+    const mid = start + slice / 2;
+    ctx.save();
+    ctx.translate(cx + (r * 0.6) * Math.cos(mid), cy + (r * 0.6) * Math.sin(mid));
+    ctx.font = '20px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(item.icon, 0, 0);
+    ctx.restore();
+  }
+  // Center circle
+  ctx.beginPath();
+  ctx.arc(cx, cy, 20, 0, 2 * Math.PI);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(cx, cy, 15, 0, 2 * Math.PI);
+  ctx.fillStyle = '#f43f5e';
+  ctx.fill();
+}
+
+let wheelAngle = 0;
+function spin() {
+  if (spinning || filteredList.length === 0) return;
+  spinning = true;
+  document.getElementById('spin-btn').disabled = true;
+  document.getElementById('result-card').classList.add('hidden');
+
+  const extraSpins = 5 + Math.random() * 5;
+  const targetAngle = wheelAngle + extraSpins * 2 * Math.PI + Math.random() * 2 * Math.PI;
+  const duration = 3000;
+  const start = performance.now();
+  const startAngle = wheelAngle;
+
+  function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+
+  function animate(now) {
+    const elapsed = now - start;
+    const t = Math.min(elapsed / duration, 1);
+    wheelAngle = startAngle + (targetAngle - startAngle) * easeOut(t);
+
+    const canvas = document.getElementById('wheel-canvas');
+    const ctx = canvas.getContext('2d');
+    const cx = 140, cy = 140, r = 130;
+    const n = Math.min(filteredList.length, 10);
+    const slice = (2 * Math.PI) / n;
+    ctx.clearRect(0, 0, 280, 280);
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(wheelAngle);
+    ctx.translate(-cx, -cy);
+
+    for (let i = 0; i < n; i++) {
+      const item = filteredList[i % filteredList.length];
+      const colors = CAT_COLORS[item.cat] || ['#f43f5e','#fb7185'];
+      const s = i * slice, e = s + slice;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, r, s, e);
+      ctx.closePath();
+      ctx.fillStyle = i % 2 === 0 ? colors[0] : colors[1];
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      const mid = s + slice / 2;
+      ctx.save();
+      ctx.translate(cx + (r * 0.6) * Math.cos(mid), cy + (r * 0.6) * Math.sin(mid));
+      ctx.font = '20px serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(item.icon, 0, 0);
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // Center
+    ctx.beginPath();
+    ctx.arc(cx, cy, 20, 0, 2 * Math.PI);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx, cy, 15, 0, 2 * Math.PI);
+    ctx.fillStyle = '#f43f5e';
+    ctx.fill();
+
+    if (t < 1) {
+      requestAnimationFrame(animate);
+    } else {
+      spinning = false;
+      document.getElementById('spin-btn').disabled = false;
+      // Determine selected
+      const n2 = Math.min(filteredList.length, 10);
+      const slice2 = (2 * Math.PI) / n2;
+      const normalizedAngle = ((-wheelAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+      const selectedIdx = Math.floor(normalizedAngle / slice2) % filteredList.length;
+      showResult(filteredList[selectedIdx]);
+    }
+  }
+  requestAnimationFrame(animate);
+}
+
+function showResult(item) {
+  currentResult = item;
+  document.getElementById('result-cat-icon').textContent = item.icon;
+  document.getElementById('result-cat-label').textContent = item.label;
+  document.getElementById('result-action').textContent = item.action;
+  document.getElementById('result-desc').textContent = item.desc;
+  document.getElementById('result-time').textContent = item.time;
+  document.getElementById('result-difficulty').textContent = item.diff;
+  document.getElementById('complete-btn').disabled = false;
+  document.getElementById('complete-btn').textContent = '✅ やった！達成！';
+  document.getElementById('complete-btn').className = 'w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl transition text-lg';
+  document.getElementById('result-card').classList.remove('hidden');
+  document.getElementById('result-card').classList.remove('fade-up');
+  void document.getElementById('result-card').offsetWidth;
+  document.getElementById('result-card').classList.add('fade-up');
+}
+
+function completAction() {
+  if (!currentResult) return;
+  completedToday.push({ action: currentResult.action, time: new Date().toLocaleTimeString('ja-JP', {hour:'2-digit',minute:'2-digit'}) });
+  allCompleted.push({ action: currentResult.action, date: today });
+  localStorage.setItem('kindness-today', JSON.stringify(completedToday));
+  localStorage.setItem('kindness-all', JSON.stringify(allCompleted));
+
+  // Update streak
+  if (streakData.lastDate !== today) {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yd = yesterday.toLocaleDateString('ja-JP');
+    streakData.streak = (streakData.lastDate === yd) ? streakData.streak + 1 : 1;
+    streakData.lastDate = today;
+    localStorage.setItem('kindness-streak', JSON.stringify(streakData));
+  }
+
+  launchConfetti();
+  document.getElementById('complete-btn').disabled = true;
+  document.getElementById('complete-btn').textContent = '🎉 達成済み！';
+  document.getElementById('complete-btn').className = 'w-full bg-gray-300 text-gray-500 font-bold py-3 rounded-xl text-lg cursor-not-allowed';
+  updateStats();
+  updateTodayLog();
+}
+
+function launchConfetti() {
+  const container = document.getElementById('confetti-container');
+  const colors = ['#f43f5e','#8b5cf6','#3b82f6','#f59e0b','#10b981'];
+  for (let i = 0; i < 40; i++) {
+    const piece = document.createElement('div');
+    piece.className = 'confetti-piece';
+    piece.style.left = Math.random() * 100 + '%';
+    piece.style.top = Math.random() * 20 + '%';
+    piece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+    piece.style.animationDelay = Math.random() * 0.5 + 's';
+    piece.style.animationDuration = (0.8 + Math.random() * 0.5) + 's';
+    container.appendChild(piece);
+    setTimeout(() => piece.remove(), 1500);
+  }
+}
+
+function updateStats() {
+  const weekStart = new Date();
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+  const weekCount = allCompleted.filter(a => {
+    const d = new Date(a.date.replace(/\//g,'-'));
+    return d >= weekStart;
+  }).length;
+  document.getElementById('stat-week').textContent = weekCount;
+  document.getElementById('stat-streak').textContent = streakData.streak;
+  document.getElementById('stat-total').textContent = allCompleted.length;
+}
+
+function updateTodayLog() {
+  if (completedToday.length === 0) { document.getElementById('today-log').classList.add('hidden'); return; }
+  document.getElementById('today-log').classList.remove('hidden');
+  document.getElementById('today-list').innerHTML = completedToday.map(c =>
+    `<div class="flex items-center gap-2 py-1.5 border-b border-gray-100 last:border-0">
+      <span class="text-green-500">✓</span>
+      <span class="flex-1">${c.action}</span>
+      <span class="text-xs text-gray-400">${c.time}</span>
+    </div>`
+  ).join('');
+}
+
+drawWheel();
+updateStats();
+updateTodayLog();
+</script>
+</body>
+</html>
